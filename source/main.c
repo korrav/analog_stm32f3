@@ -11,7 +11,7 @@ static void initial_spi(void);
 static void initial_adc(void);
 void initial_dma(void);
 void initial_opa(void);
-void initial_tim6(void);
+void initial_tim8(void);
 void Delay(__IO uint32_t nTime);
 
 
@@ -26,12 +26,12 @@ int main(void) {
   }
 	initial_spi();
 	initial_adc();
-	initial_tim6();
+	initial_tim8();
 	ADC_StartConversion(ADC1); 
 	ADC_StartConversion(ADC2); 
 	ADC_StartConversion(ADC3); 
 	ADC_StartConversion(ADC4); 
-	TIM_Cmd(TIM6, ENABLE);
+	TIM_Cmd(TIM8, ENABLE);
 	while(1) 
 	{}
 }
@@ -127,11 +127,12 @@ void initial_adc(void) {
   while(ADC_GetCalibrationStatus(ADC4) != RESET );
 	/*init logic*/
 	ADC_StructInit(&ADC_InitStructure);
-	ADC_InitStructure.ADC_ExternalTrigConvEvent = ADC_ExternalTrigConvEvent_13; 
+	ADC_InitStructure.ADC_ExternalTrigConvEvent = ADC_ExternalTrigConvEvent_7; 
 	ADC_InitStructure.ADC_ContinuousConvMode = ADC_ContinuousConvMode_Enable;
 	ADC_InitStructure.ADC_ExternalTrigEventEdge = ADC_ExternalTrigEventEdge_RisingEdge;
 	ADC_Init(ADC1, &ADC_InitStructure);
 	ADC_Init(ADC2, &ADC_InitStructure);
+	ADC_InitStructure.ADC_ExternalTrigConvEvent = ADC_ExternalTrigConvEvent_4; 
 	ADC_Init(ADC3, &ADC_InitStructure);
 	ADC_Init(ADC4, &ADC_InitStructure);
 	
@@ -141,15 +142,14 @@ void initial_adc(void) {
   ADC_CommonInitStructure.ADC_DMAMode = ADC_DMAMode_Circular;                  
   ADC_CommonInitStructure.ADC_TwoSamplingDelay = 0;          
   ADC_CommonInit(ADC1, &ADC_CommonInitStructure);
-	ADC_CommonInit(ADC3, &ADC_CommonInitStructure);
-  ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;             
+	ADC_CommonInit(ADC3, &ADC_CommonInitStructure);             
 	ADC_CommonInit(ADC2, &ADC_CommonInitStructure);
 	ADC_CommonInit(ADC4, &ADC_CommonInitStructure);
 
-	ADC_RegularChannelConfig(ADC1, ADC_Channel_3, 1, ADC_SampleTime_4Cycles5);
-	ADC_RegularChannelConfig(ADC2, ADC_Channel_3, 1, ADC_SampleTime_4Cycles5);
-	ADC_RegularChannelConfig(ADC3, ADC_Channel_1, 1, ADC_SampleTime_4Cycles5);
-	ADC_RegularChannelConfig(ADC4, ADC_Channel_3, 1, ADC_SampleTime_4Cycles5);
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_15, 1, ADC_SampleTime_4Cycles5);
+	ADC_RegularChannelConfig(ADC2, ADC_Channel_17, 1, ADC_SampleTime_4Cycles5);
+	ADC_RegularChannelConfig(ADC3, ADC_Channel_17, 1, ADC_SampleTime_4Cycles5);
+	ADC_RegularChannelConfig(ADC4, ADC_Channel_17, 1, ADC_SampleTime_4Cycles5);
 	
 	ADC_RegularChannelSequencerLengthConfig(ADC1, 1);
 	ADC_RegularChannelSequencerLengthConfig(ADC2, 1);
@@ -195,17 +195,17 @@ void initial_opa(void) {
 	OPAMP_Cmd(OPAMP_Selection_OPAMP4, ENABLE);
 }
 
-void initial_tim6(void) {
+void initial_tim8(void) {
 	TIM_TimeBaseInitTypeDef  TIM_TimeBaseStructure;
 //NVIC_InitTypeDef NVIC_InitStructure;
 	
-	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM6, ENABLE);
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM8, ENABLE);
 	TIM_TimeBaseStructure.TIM_ClockDivision = 0;
 	TIM_TimeBaseStructure.TIM_Prescaler = 1;
 	TIM_TimeBaseStructure.TIM_Period = 36000;
 	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
 	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
-	TIM_TimeBaseInit(TIM6, &TIM_TimeBaseStructure);
+	TIM_TimeBaseInit(TIM8, &TIM_TimeBaseStructure);
 	
 // 	NVIC_InitStructure.NVIC_IRQChannel = TIM6_DAC_IRQn;
 //   NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority = 3;
@@ -214,8 +214,8 @@ void initial_tim6(void) {
 //   NVIC_Init(&NVIC_InitStructure);
 //   TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
 	
-	TIM_SelectOutputTrigger(TIM6, TIM_TRGOSource_Update);
-	TIM_SelectOnePulseMode(TIM6, TIM_OPMode_Single);
+	TIM_SelectOutputTrigger(TIM8, TIM_TRGOSource_Update);
+	TIM_SelectOnePulseMode(TIM8, TIM_OPMode_Single);
 	
 }
 void Delay(__IO uint32_t nTime)
@@ -232,7 +232,6 @@ void initial_dma(void) {
 	DMA_InitTypeDef  DMA_InitStructure;
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA1, ENABLE);
 	DMA_DeInit(DMA1_Channel1);
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA2, ENABLE);
 	DMA_InitStructure.DMA_PeripheralBaseAddr = ADC12_ADR;
 	DMA_InitStructure.DMA_MemoryBaseAddr = SPI1_ADR;
 	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralSRC;
