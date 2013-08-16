@@ -42,7 +42,7 @@
 // #include "stm32f30x_flash.h"
 #include "stm32f30x_gpio.h"
 #include "stm32f30x_syscfg.h"
-// #include "stm32f30x_i2c.h"
+#include "stm32f30x_i2c.h"
 // #include "stm32f30x_iwdg.h"
 #include "stm32f30x_opamp.h"
 // #include "stm32f30x_pwr.h"

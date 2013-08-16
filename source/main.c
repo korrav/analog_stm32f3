@@ -26,6 +26,11 @@ int main(void) {
   }
 	initial_spi();
 	initial_adc();
+	initial_tim6();
+	ADC_StartConversion(ADC1); 
+	ADC_StartConversion(ADC2); 
+	ADC_StartConversion(ADC3); 
+	ADC_StartConversion(ADC4); 
 	TIM_Cmd(TIM6, ENABLE);
 	while(1) 
 	{}
@@ -158,11 +163,6 @@ void initial_adc(void) {
 	 while(!ADC_GetFlagStatus(ADC1, ADC_FLAG_RDY) && !ADC_GetFlagStatus(ADC2, ADC_FLAG_RDY) 
 		 && !ADC_GetFlagStatus(ADC3, ADC_FLAG_RDY) && !ADC_GetFlagStatus(ADC4, ADC_FLAG_RDY));
 	 
-	ADC_StartConversion(ADC1); 
-	ADC_StartConversion(ADC2); 
-	ADC_StartConversion(ADC3); 
-	ADC_StartConversion(ADC4); 
-	 
 	initial_opa();
 	initial_dma();
 	return;
@@ -246,7 +246,7 @@ void initial_dma(void) {
 	DMA_InitStructure.DMA_M2M = DMA_M2M_Disable;
   DMA_Init(DMA1_Channel1, &DMA_InitStructure);
 	DMA_Cmd(DMA1_Channel1, ENABLE);
-	//for ADC12
+	//for ADC34
 	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_DMA2, ENABLE);
 	DMA_DeInit(DMA2_Channel5);
 	DMA_InitStructure.DMA_PeripheralBaseAddr = ADC34_ADR;
