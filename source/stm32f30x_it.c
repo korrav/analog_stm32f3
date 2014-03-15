@@ -42,7 +42,6 @@
 /* Private define ------------------------------------------------------------*/
 /* Private macro -------------------------------------------------------------*/
 /* Private variables ---------------------------------------------------------*/
-extern __IO uint32_t TimingDelay;
 /* Private function prototypes -----------------------------------------------*/
 /* Private functions ---------------------------------------------------------*/
 
@@ -166,6 +165,7 @@ void I2C2_EV_IRQHandler(void) {
 	i2c_hand();
 	return;
 }
+
 /******************************************************************************/
 /*                 STM32F30x Peripherals Interrupt Handlers                   */
 /*  Add here the Interrupt Handler for the used peripheral(s) (PPP), for the  */
