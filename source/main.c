@@ -1,6 +1,6 @@
 #include "main.h"
 
-#define SYSTEMTICK_PERIOD_MUS 1 //period of time update
+#define SYSTEMTICK_PERIOD_MUS 100 //period of time update
 #define ADC12_ADR 0x5000030A
 #define ADC34_ADR 0x5000070A
 #define SPI1_ADR	0x4001300C
@@ -9,6 +9,7 @@
 #define I2C_BUF_SIZE 100
 #define I2C_SLAVE 1
 #define I2C_OWN 6
+#define TIME_MONITORING_PGA 100
 
 __IO static uint64_t LocalTime = 0; /* this variable is used to create a time reference incremented by 10ms */
 volatile short* adc12 = (short*)0x5000030C;
@@ -18,7 +19,6 @@ volatile short* spi2 =  (short*)SPI2_ADR;
 volatile short* spi3 =  (short*)SPI3_ADR;
 
 char test =0;
-int16_t message[4];
 
 struct {
 	int8_t bufr[I2C_BUF_SIZE];
@@ -27,8 +27,12 @@ struct {
 } stat;
 
 struct {
-	int8_t gain[4];
+	int16_t gain[4];
 	int8_t statusAdc;
+	int16_t rec_message[4];
+	char is_overload;
+	char enable_monitoring;
+	char mut;
 } driver_stat;
 
 struct {
@@ -56,34 +60,45 @@ void Time_Update(void);
 void i2c_hand(void);
 void handl_i2c_message(void);
 void i2c_write(uint8_t* pBuffer, uint8_t num);
-void pga2505_write(int16_t* pBuffer); //size buf equal 8B
+void pga2505_write(void);
 void orders_to_stop(void);
 void orders_to_stop_test(void);
 void start_test(void);
-
+void monitoring_pga(void);
 void setGainOut(int8_t* gain);
+void clear_set_debug(void);
 
-enum id_package_of_i2c { START_ADC, STOP_ADC, SET_GAIN, START_SPI0, START_SPI1, START_TEST, STOP_TEST};
+enum id_package_of_i2c { START_ADC, STOP_ADC, SET_GAIN, START_SPI0, START_SPI1, START_TEST, STOP_TEST, 
+												CLEAR_SET_OVERLOAD, ENABLE_MONITORING, DISABLE_MONITORING};
 enum status_ADC {RUN_ADC, HALT_ADC, DURING_STOP_ADC};
 enum status_TEST {RUN_TEST, HALT_TEST, DURING_STOP_TEST};
 
 int main(void) {
 	int i = 0;
 	driver_stat.statusAdc = HALT_ADC;
+	for(i =0;  i < 4;i++) {
+		driver_stat.gain[i] = 0;
+		driver_stat.rec_message[i] = 0;
+	}
+	driver_stat.is_overload = 0;
+	driver_stat.enable_monitoring = 0;
+	driver_stat.mut = 0;
 	test_stat.statusTest = HALT_TEST;
 	NVIC_PriorityGroupConfig(NVIC_PriorityGroup_3);
-	/* Setup SysTick Timer for 1 µsec interrupts  */
-  if (SysTick_Config(SystemCoreClock / 1000000))
+		/* Setup SysTick Timer for 1 ms interrupts  */
+	if (SysTick_Config(SystemCoreClock / 10))
   { 
     /* Capture error */ 
     while (1)	
     {}
   }
-	initial_gpio();
 	initial_spi();
+	initial_gpio();
 	initial_adc();
 	initial_i2c();
 	initial_mco();
+	pga2505_write();
+	driver_stat.enable_monitoring = 1;
 	while(1) 
 	{
 		if(test_stat.statusTest != HALT_TEST) {
@@ -167,6 +182,7 @@ void initial_spi(void) {
 	//configure spi2
 	GPIO_WriteBit(GPIOD, GPIO_Pin_15, Bit_SET);
 	structSPI.SPI_BaudRatePrescaler = SPI_BaudRatePrescaler_32;
+	structSPI.SPI_Direction = SPI_Direction_2Lines_FullDuplex;
 	SPI_Init(SPI2, &structSPI);
 	SPI_SSOutputCmd(SPI2, ENABLE);
 	SPI_NSSPulseModeCmd(SPI2, DISABLE);
@@ -196,13 +212,13 @@ void initial_adc(void) {
 	//configure ADC
 	/*power-on voltage reference*/
 	ADC_VoltageRegulatorCmd(ADC1, ENABLE);
-	Delay(100000);
+	Delay(100);
 	ADC_VoltageRegulatorCmd(ADC2, ENABLE);
-	Delay(100000);
+	Delay(100);
 	ADC_VoltageRegulatorCmd(ADC3, ENABLE);
-	Delay(100000);
+	Delay(100);
 	ADC_VoltageRegulatorCmd(ADC4, ENABLE);
-	Delay(100000);
+	Delay(100);
 	/*calibration*/
 	ADC_SelectCalibrationMode(ADC1, ADC_CalibrationMode_Single);
   ADC_StartCalibration(ADC1);
@@ -342,6 +358,8 @@ void Delay(uint64_t nCount) {
 
 void Time_Update() {
   LocalTime += SYSTEMTICK_PERIOD_MUS;
+	if(!(LocalTime%TIME_MONITORING_PGA) && driver_stat.enable_monitoring == 1)
+		monitoring_pga();
 	return;
 }
 
@@ -457,10 +475,18 @@ void handl_i2c_message(void) {
 				break;
 				case STOP_TEST:
 					orders_to_stop_test();
+				case ENABLE_MONITORING:
+					driver_stat.enable_monitoring = 1;
+				break;
+				case DISABLE_MONITORING:
+					driver_stat.enable_monitoring = 0;
 				break;
 				case SET_GAIN:
 					if(stat.numr == 5)
 						setGainOut(&stat.bufr[1]);
+				break;
+				case CLEAR_SET_OVERLOAD:
+					clear_set_debug();
 				break;
 		  }
 		stat.numr = 0;
@@ -481,12 +507,14 @@ void i2c_write(uint8_t* pBuffer, uint8_t num) {
 	I2C_ClearFlag(I2C2, I2C_ICR_STOPCF);
 }
 
-void pga2505_write(int16_t* pBuffer) {
+void pga2505_write(void) {
 	int i =3;
 	GPIO_WriteBit(GPIOD, GPIO_Pin_15, Bit_RESET);
 	for(; i >= 0; i--) {
-		SPI_I2S_SendData16(SPI2, pBuffer[i]);
 		while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE) == RESET);
+		SPI_I2S_SendData16(SPI2, driver_stat.gain[i]);
+		while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_BSY) == SET);
+		SPI_I2S_ReceiveData16(SPI2);
 	}
 	while(SPI_GetTransmissionFIFOStatus(SPI2) != SPI_TransmissionFIFOStatus_Empty);
 	while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_BSY) == SET);
@@ -496,13 +524,13 @@ void pga2505_write(int16_t* pBuffer) {
 
 //void 
 void setGainOut(int8_t* gain) {
-	//int16_t message[4];
 	uint8_t i;
+	while(driver_stat.mut == 1){};
+	driver_stat.mut = 1;
 	for(i = 0; i < 4; i++)
-		message[i] = gain[i] & ~ 0x2000;
-	pga2505_write(message);
-	for(i = 0; i < 4; i++)
-		driver_stat.gain[i] = gain[i];
+		driver_stat.gain[i] = gain[i] & ~ 0x2000;
+	pga2505_write();
+	driver_stat.mut = 0;
 	return;
 }
 
@@ -524,12 +552,40 @@ void start_test(void) {
 
 void initial_gpio(void) {
 	GPIO_InitTypeDef structGPIO;
-	
-	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOB | RCC_AHBPeriph_GPIOE, ENABLE);
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOE, ENABLE);
 	//configure GPIO OUT
-	structGPIO.GPIO_Pin = GPIO_Pin_8 | GPIO_Pin_10 | GPIO_Pin_12;
+	structGPIO.GPIO_Pin = GPIO_Pin_12;
 	structGPIO.GPIO_Mode = GPIO_Mode_OUT;
 	GPIO_Init(GPIOE, &structGPIO);
-	structGPIO.GPIO_Pin = GPIO_Pin_2;
-	GPIO_Init(GPIOB, &structGPIO);
+}
+
+void monitoring_pga(void) {
+	int i = 3;
+	char isResetPga = 0;
+	if(driver_stat.mut)
+		return;
+	driver_stat.mut = 1;
+	GPIO_WriteBit(GPIOD, GPIO_Pin_15, Bit_RESET);
+	for(; i >= 0; i--) {
+		while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE) == RESET);
+		SPI_I2S_SendData16(SPI2, driver_stat.gain[i]);
+		while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_BSY) == SET);
+		if((driver_stat.rec_message[i] = SPI_I2S_ReceiveData16(SPI2)) != driver_stat.gain[i]) {
+			isResetPga = 1;
+		}
+	}
+	while(SPI_GetTransmissionFIFOStatus(SPI2) != SPI_TransmissionFIFOStatus_Empty);
+	while(SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_BSY) == SET);
+	GPIO_WriteBit(GPIOD, GPIO_Pin_15, Bit_SET);
+	if(isResetPga) {
+		GPIO_WriteBit(GPIOE, GPIO_Pin_12, Bit_SET);
+		driver_stat.is_overload = 1;
+	}
+	driver_stat.mut = 0;
+	return;
+}
+
+void clear_set_debug(void){
+	GPIO_WriteBit(GPIOE, GPIO_Pin_12, Bit_RESET);
+	driver_stat.is_overload = 0;
 }
